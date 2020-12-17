@@ -1,0 +1,28 @@
+{
+  "name": "haiseerelementui",
+  "version": "0.0.8",
+  "private": false,
+  "directories": {
+    "dist": "dist"
+  },
+  "main": "lib/index.umd.js",
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build-bundle": "vue-cli-service build --target lib --name index --dest lib ./src/lib/index.js",
+    "lint": "vue-cli-service lint"
+  },
+  "dependencies": {
+    "axios": "^0.21.0",
+    "core-js": "^3.6.5",
+    "date-and-time": "^0.14.1",
+    "element-ui": "^2.14.1",
+    "less-loader": "^7.1.0",
+    "qs": "^6.9.4",
+    "vue": "^2.6.11"
+  },
+  "devDependencies": {
+    "@vue/cli-plugin-babel": "~4.5.0",
+    "@vue/cli-service": "~4.5.0",
+    "vue-template-compiler": "^2.6.11"
+  }
+}
