@@ -7,7 +7,7 @@ import HsCheckboxgroup from "./hs-checkboxgroup/HsCheckboxgroup";
 HSUtil.initHsUtil();
 // 存储组件列表
 const components = [
-    HsHello,HsDialog,HsSelect,HsCheckboxgroup
+    HsHello, HsDialog, HsSelect, HsCheckboxgroup
 ]
 const install = function (Vue) {
     if (install.installed) return

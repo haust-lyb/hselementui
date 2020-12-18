@@ -16,7 +16,9 @@ let loadingRequestCount = 0;
 
 
 const showLoading = (config) => {
-    if (config.showLoading == false){return }
+    if (config.showLoading == false) {
+        return
+    }
     if (loadingRequestCount === 0) {
         loadingInstance = Loading.service({
             body: true,
@@ -29,7 +31,9 @@ const showLoading = (config) => {
 
 const hideLoading = (config) => {
     // this.hsConsoleInfo("关闭loading")
-    if(config.showLoading == false){return;}
+    if (config.showLoading == false) {
+        return;
+    }
     if (loadingRequestCount <= 0) return
     loadingRequestCount--
     if (loadingRequestCount === 0) {
@@ -51,7 +55,7 @@ service.interceptors.request.use(
         return config;
     },
     error => {
-        HSUtil.getDefVue.hsConsoleError("requestError:"+error);
+        HSUtil.getDefVue.hsConsoleError("requestError:" + error);
         return Promise.reject();
     }
 );
@@ -70,11 +74,11 @@ service.interceptors.response.use(
         }
     },
     error => {
-        HSUtil.hsConsoleInfo("requestError:"+error);
-        if (error == "Error: Request failed with status code 500"){
+        HSUtil.hsConsoleInfo("requestError:" + error);
+        if (error == "Error: Request failed with status code 500") {
             HSUtil.hs_msg_error("服务器500错误");
         }
-        if (error == "Error: Request failed with status code 404"){
+        if (error == "Error: Request failed with status code 404") {
             HSUtil.hs_msg_error("服务器404错误");
         }
         setTimeout(() => {

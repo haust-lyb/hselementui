@@ -11,30 +11,31 @@
 
 <script>
     import request from '../../utils/request';
+
     export default {
         name: "hs-select",
-        props:{
-            url:'',
+        props: {
+            url: '',
             //v-model
-            value:null,
+            value: null,
         },
         created() {
-            if (this.url == '' || this.url == null){
+            if (this.url == '' || this.url == null) {
                 HSUtil.hs_console_error("el-select 控件没有传入 url");
             }
             //加载远程数据
             request({
-                url:this.url,
+                url: this.url,
                 method: 'post',
                 data: {},
-            }).then(res =>{
+            }).then(res => {
                 this.selectOptions = res;
             })
         },
-        data(){
+        data() {
             return {
-                selectOptions:[],
-                _name:this.name,
+                selectOptions: [],
+                _name: this.name,
             }
         }
     }

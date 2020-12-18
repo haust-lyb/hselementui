@@ -13,7 +13,7 @@
 
     export default {
         name: "hs-dialog",
-        component:[],
+        component: [],
         props: {
             title: ""
         },
