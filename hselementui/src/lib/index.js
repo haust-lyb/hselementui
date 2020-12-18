@@ -21,6 +21,6 @@ export default {
     install,
     HsDialog,
     HsSelect,
-    HsCheckboxGroup,
+    HsCheckboxgroup,
     HsHello
 }

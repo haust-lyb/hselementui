@@ -590,6 +590,148 @@ module.exports = function (bitmap, value) {
 
 /***/ }),
 
+/***/ "1276":
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+var fixRegExpWellKnownSymbolLogic = __webpack_require__("d784");
+var isRegExp = __webpack_require__("44e7");
+var anObject = __webpack_require__("825a");
+var requireObjectCoercible = __webpack_require__("1d80");
+var speciesConstructor = __webpack_require__("4840");
+var advanceStringIndex = __webpack_require__("8aa5");
+var toLength = __webpack_require__("50c4");
+var callRegExpExec = __webpack_require__("14c3");
+var regexpExec = __webpack_require__("9263");
+var fails = __webpack_require__("d039");
+
+var arrayPush = [].push;
+var min = Math.min;
+var MAX_UINT32 = 0xFFFFFFFF;
+
+// babel-minify transpiles RegExp('x', 'y') -> /x/y and it causes SyntaxError
+var SUPPORTS_Y = !fails(function () { return !RegExp(MAX_UINT32, 'y'); });
+
+// @@split logic
+fixRegExpWellKnownSymbolLogic('split', 2, function (SPLIT, nativeSplit, maybeCallNative) {
+  var internalSplit;
+  if (
+    'abbc'.split(/(b)*/)[1] == 'c' ||
+    'test'.split(/(?:)/, -1).length != 4 ||
+    'ab'.split(/(?:ab)*/).length != 2 ||
+    '.'.split(/(.?)(.?)/).length != 4 ||
+    '.'.split(/()()/).length > 1 ||
+    ''.split(/.?/).length
+  ) {
+    // based on es5-shim implementation, need to rework it
+    internalSplit = function (separator, limit) {
+      var string = String(requireObjectCoercible(this));
+      var lim = limit === undefined ? MAX_UINT32 : limit >>> 0;
+      if (lim === 0) return [];
+      if (separator === undefined) return [string];
+      // If `separator` is not a regex, use native split
+      if (!isRegExp(separator)) {
+        return nativeSplit.call(string, separator, lim);
+      }
+      var output = [];
+      var flags = (separator.ignoreCase ? 'i' : '') +
+                  (separator.multiline ? 'm' : '') +
+                  (separator.unicode ? 'u' : '') +
+                  (separator.sticky ? 'y' : '');
+      var lastLastIndex = 0;
+      // Make `global` and avoid `lastIndex` issues by working with a copy
+      var separatorCopy = new RegExp(separator.source, flags + 'g');
+      var match, lastIndex, lastLength;
+      while (match = regexpExec.call(separatorCopy, string)) {
+        lastIndex = separatorCopy.lastIndex;
+        if (lastIndex > lastLastIndex) {
+          output.push(string.slice(lastLastIndex, match.index));
+          if (match.length > 1 && match.index < string.length) arrayPush.apply(output, match.slice(1));
+          lastLength = match[0].length;
+          lastLastIndex = lastIndex;
+          if (output.length >= lim) break;
+        }
+        if (separatorCopy.lastIndex === match.index) separatorCopy.lastIndex++; // Avoid an infinite loop
+      }
+      if (lastLastIndex === string.length) {
+        if (lastLength || !separatorCopy.test('')) output.push('');
+      } else output.push(string.slice(lastLastIndex));
+      return output.length > lim ? output.slice(0, lim) : output;
+    };
+  // Chakra, V8
+  } else if ('0'.split(undefined, 0).length) {
+    internalSplit = function (separator, limit) {
+      return separator === undefined && limit === 0 ? [] : nativeSplit.call(this, separator, limit);
+    };
+  } else internalSplit = nativeSplit;
+
+  return [
+    // `String.prototype.split` method
+    // https://tc39.github.io/ecma262/#sec-string.prototype.split
+    function split(separator, limit) {
+      var O = requireObjectCoercible(this);
+      var splitter = separator == undefined ? undefined : separator[SPLIT];
+      return splitter !== undefined
+        ? splitter.call(separator, O, limit)
+        : internalSplit.call(String(O), separator, limit);
+    },
+    // `RegExp.prototype[@@split]` method
+    // https://tc39.github.io/ecma262/#sec-regexp.prototype-@@split
+    //
+    // NOTE: This cannot be properly polyfilled in engines that don't support
+    // the 'y' flag.
+    function (regexp, limit) {
+      var res = maybeCallNative(internalSplit, regexp, this, limit, internalSplit !== nativeSplit);
+      if (res.done) return res.value;
+
+      var rx = anObject(regexp);
+      var S = String(this);
+      var C = speciesConstructor(rx, RegExp);
+
+      var unicodeMatching = rx.unicode;
+      var flags = (rx.ignoreCase ? 'i' : '') +
+                  (rx.multiline ? 'm' : '') +
+                  (rx.unicode ? 'u' : '') +
+                  (SUPPORTS_Y ? 'y' : 'g');
+
+      // ^(? + rx + ) is needed, in combination with some S slicing, to
+      // simulate the 'y' flag.
+      var splitter = new C(SUPPORTS_Y ? rx : '^(?:' + rx.source + ')', flags);
+      var lim = limit === undefined ? MAX_UINT32 : limit >>> 0;
+      if (lim === 0) return [];
+      if (S.length === 0) return callRegExpExec(splitter, S) === null ? [S] : [];
+      var p = 0;
+      var q = 0;
+      var A = [];
+      while (q < S.length) {
+        splitter.lastIndex = SUPPORTS_Y ? q : 0;
+        var z = callRegExpExec(splitter, SUPPORTS_Y ? S : S.slice(q));
+        var e;
+        if (
+          z === null ||
+          (e = min(toLength(splitter.lastIndex + (SUPPORTS_Y ? 0 : q)), S.length)) === p
+        ) {
+          q = advanceStringIndex(S, q, unicodeMatching);
+        } else {
+          A.push(S.slice(p, q));
+          if (A.length === lim) return A;
+          for (var i = 1; i <= z.length - 1; i++) {
+            A.push(z[i]);
+            if (A.length === lim) return A;
+          }
+          q = p = e;
+        }
+      }
+      A.push(S.slice(p));
+      return A;
+    }
+  ];
+}, !SUPPORTS_Y);
+
+
+/***/ }),
+
 /***/ "12f2":
 /***/ (function(module, exports, __webpack_require__) {
 
@@ -67680,243 +67822,6 @@ var es_array_map = __webpack_require__("d81d");
 // EXTERNAL MODULE: ./node_modules/core-js/modules/es.function.name.js
 var es_function_name = __webpack_require__("b0c0");
 
-// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js?{"cacheDirectory":"node_modules/.cache/vue-loader","cacheIdentifier":"0a4d2ee7-vue-loader-template"}!./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-hello/HsHello.vue?vue&type=template&id=6344cc04&scoped=true&
-var render = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',[_c('el-button',{attrs:{"type":"danger"}},[_vm._v("hello 😁 "+_vm._s(_vm.msg==null?"haiseer":_vm.msg))])],1)}
-var staticRenderFns = []
-
-
-// CONCATENATED MODULE: ./src/lib/hs-hello/HsHello.vue?vue&type=template&id=6344cc04&scoped=true&
-
-// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js??ref--12-0!./node_modules/thread-loader/dist/cjs.js!./node_modules/babel-loader/lib!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-hello/HsHello.vue?vue&type=script&lang=js&
-//
-//
-//
-//
-//
-//
-/* harmony default export */ var HsHellovue_type_script_lang_js_ = ({
-  name: 'hs-hello',
-  props: {
-    msg: String
-  }
-});
-// CONCATENATED MODULE: ./src/lib/hs-hello/HsHello.vue?vue&type=script&lang=js&
- /* harmony default export */ var hs_hello_HsHellovue_type_script_lang_js_ = (HsHellovue_type_script_lang_js_); 
-// EXTERNAL MODULE: ./src/lib/hs-hello/HsHello.vue?vue&type=style&index=0&id=6344cc04&scoped=true&lang=css&
-var HsHellovue_type_style_index_0_id_6344cc04_scoped_true_lang_css_ = __webpack_require__("0d3d");
-
-// CONCATENATED MODULE: ./node_modules/vue-loader/lib/runtime/componentNormalizer.js
-/* globals __VUE_SSR_CONTEXT__ */
-
-// IMPORTANT: Do NOT use ES2015 features in this file (except for modules).
-// This module is a runtime utility for cleaner component module output and will
-// be included in the final webpack user bundle.
-
-function normalizeComponent (
-  scriptExports,
-  render,
-  staticRenderFns,
-  functionalTemplate,
-  injectStyles,
-  scopeId,
-  moduleIdentifier, /* server only */
-  shadowMode /* vue-cli only */
-) {
-  // Vue.extend constructor export interop
-  var options = typeof scriptExports === 'function'
-    ? scriptExports.options
-    : scriptExports
-
-  // render functions
-  if (render) {
-    options.render = render
-    options.staticRenderFns = staticRenderFns
-    options._compiled = true
-  }
-
-  // functional template
-  if (functionalTemplate) {
-    options.functional = true
-  }
-
-  // scopedId
-  if (scopeId) {
-    options._scopeId = 'data-v-' + scopeId
-  }
-
-  var hook
-  if (moduleIdentifier) { // server build
-    hook = function (context) {
-      // 2.3 injection
-      context =
-        context || // cached call
-        (this.$vnode && this.$vnode.ssrContext) || // stateful
-        (this.parent && this.parent.$vnode && this.parent.$vnode.ssrContext) // functional
-      // 2.2 with runInNewContext: true
-      if (!context && typeof __VUE_SSR_CONTEXT__ !== 'undefined') {
-        context = __VUE_SSR_CONTEXT__
-      }
-      // inject component styles
-      if (injectStyles) {
-        injectStyles.call(this, context)
-      }
-      // register component module identifier for async chunk inferrence
-      if (context && context._registeredComponents) {
-        context._registeredComponents.add(moduleIdentifier)
-      }
-    }
-    // used by ssr in case component is cached and beforeCreate
-    // never gets called
-    options._ssrRegister = hook
-  } else if (injectStyles) {
-    hook = shadowMode
-      ? function () {
-        injectStyles.call(
-          this,
-          (options.functional ? this.parent : this).$root.$options.shadowRoot
-        )
-      }
-      : injectStyles
-  }
-
-  if (hook) {
-    if (options.functional) {
-      // for template-only hot-reload because in that case the render fn doesn't
-      // go through the normalizer
-      options._injectStyles = hook
-      // register for functional component in vue file
-      var originalRender = options.render
-      options.render = function renderWithStyleInjection (h, context) {
-        hook.call(context)
-        return originalRender(h, context)
-      }
-    } else {
-      // inject component registration as beforeCreate hook
-      var existing = options.beforeCreate
-      options.beforeCreate = existing
-        ? [].concat(existing, hook)
-        : [hook]
-    }
-  }
-
-  return {
-    exports: scriptExports,
-    options: options
-  }
-}
-
-// CONCATENATED MODULE: ./src/lib/hs-hello/HsHello.vue
-
-
-
-
-
-
-/* normalize component */
-
-var component = normalizeComponent(
-  hs_hello_HsHellovue_type_script_lang_js_,
-  render,
-  staticRenderFns,
-  false,
-  null,
-  "6344cc04",
-  null
-  
-)
-
-/* harmony default export */ var HsHello = (component.exports);
-// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js?{"cacheDirectory":"node_modules/.cache/vue-loader","cacheIdentifier":"0a4d2ee7-vue-loader-template"}!./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-dialog/HsDialog.vue?vue&type=template&id=dc5e0108&scoped=true&
-var HsDialogvue_type_template_id_dc5e0108_scoped_true_render = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('el-dialog',{staticClass:"hs-dialog",attrs:{"close-on-click-modal":false,"title":_vm.title,"visible":_vm.dialogVisible,"before-close":_vm.handleClose,"destroy-on-close":true},on:{"update:visible":function($event){_vm.dialogVisible=$event}}},[_vm._t("default")],2)}
-var HsDialogvue_type_template_id_dc5e0108_scoped_true_staticRenderFns = []
-
-
-// CONCATENATED MODULE: ./src/lib/hs-dialog/HsDialog.vue?vue&type=template&id=dc5e0108&scoped=true&
-
-// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js??ref--12-0!./node_modules/thread-loader/dist/cjs.js!./node_modules/babel-loader/lib!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-dialog/HsDialog.vue?vue&type=script&lang=js&
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-/* harmony default export */ var HsDialogvue_type_script_lang_js_ = ({
-  name: "hs-dialog",
-  component: [],
-  props: {
-    title: ""
-  },
-  watch: {
-    dialogVisible: function dialogVisible(value) {
-      //坑 watch不能是箭头函数 否则！！！ this就不是vue对象了
-      var that = this;
-
-      if (value == false) {
-        //关闭回调
-        this.$emit("hsDialogClosed");
-      } else {
-        //显示回调
-        this.$emit("hsDialogOpen");
-      }
-    }
-  },
-  created: function created() {
-    var that = this; //初始化默认值
-
-    this.options = this.options || {}; //弹出框标题
-
-    this.options.title = this.options.title || '提示';
-  },
-  data: function data() {
-    return {
-      dialogVisible: false
-    };
-  },
-  methods: {
-    handleClose: function handleClose() {
-      this.$emit("beforeClose");
-      this.dialogVisible = false;
-    },
-    close: function close() {
-      this.dialogVisible = false;
-    },
-    show: function show() {
-      this.dialogVisible = true;
-      HSUtil.hs_msg_success("打开成功");
-    }
-  }
-});
-// CONCATENATED MODULE: ./src/lib/hs-dialog/HsDialog.vue?vue&type=script&lang=js&
- /* harmony default export */ var hs_dialog_HsDialogvue_type_script_lang_js_ = (HsDialogvue_type_script_lang_js_); 
-// EXTERNAL MODULE: ./src/lib/hs-dialog/HsDialog.vue?vue&type=style&index=0&id=dc5e0108&lang=less&scoped=true&
-var HsDialogvue_type_style_index_0_id_dc5e0108_lang_less_scoped_true_ = __webpack_require__("58b7");
-
-// CONCATENATED MODULE: ./src/lib/hs-dialog/HsDialog.vue
-
-
-
-
-
-
-/* normalize component */
-
-var HsDialog_component = normalizeComponent(
-  hs_dialog_HsDialogvue_type_script_lang_js_,
-  HsDialogvue_type_template_id_dc5e0108_scoped_true_render,
-  HsDialogvue_type_template_id_dc5e0108_scoped_true_staticRenderFns,
-  false,
-  null,
-  "dc5e0108",
-  null
-  
-)
-
-/* harmony default export */ var HsDialog = (HsDialog_component.exports);
 // EXTERNAL MODULE: ./node_modules/core-js/modules/es.array.join.js
 var es_array_join = __webpack_require__("a15b");
 
@@ -68338,7 +68243,420 @@ var HSUtil_init = function init() {
     HSUtil_init();
   }
 });
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js?{"cacheDirectory":"node_modules/.cache/vue-loader","cacheIdentifier":"0a4d2ee7-vue-loader-template"}!./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-hello/HsHello.vue?vue&type=template&id=6344cc04&scoped=true&
+var render = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('div',[_c('el-button',{attrs:{"type":"danger"}},[_vm._v("hello 😁 "+_vm._s(_vm.msg==null?"haiseer":_vm.msg))])],1)}
+var staticRenderFns = []
+
+
+// CONCATENATED MODULE: ./src/lib/hs-hello/HsHello.vue?vue&type=template&id=6344cc04&scoped=true&
+
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js??ref--12-0!./node_modules/thread-loader/dist/cjs.js!./node_modules/babel-loader/lib!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-hello/HsHello.vue?vue&type=script&lang=js&
+//
+//
+//
+//
+//
+//
+/* harmony default export */ var HsHellovue_type_script_lang_js_ = ({
+  name: 'hs-hello',
+  props: {
+    msg: String
+  }
+});
+// CONCATENATED MODULE: ./src/lib/hs-hello/HsHello.vue?vue&type=script&lang=js&
+ /* harmony default export */ var hs_hello_HsHellovue_type_script_lang_js_ = (HsHellovue_type_script_lang_js_); 
+// EXTERNAL MODULE: ./src/lib/hs-hello/HsHello.vue?vue&type=style&index=0&id=6344cc04&scoped=true&lang=css&
+var HsHellovue_type_style_index_0_id_6344cc04_scoped_true_lang_css_ = __webpack_require__("0d3d");
+
+// CONCATENATED MODULE: ./node_modules/vue-loader/lib/runtime/componentNormalizer.js
+/* globals __VUE_SSR_CONTEXT__ */
+
+// IMPORTANT: Do NOT use ES2015 features in this file (except for modules).
+// This module is a runtime utility for cleaner component module output and will
+// be included in the final webpack user bundle.
+
+function normalizeComponent (
+  scriptExports,
+  render,
+  staticRenderFns,
+  functionalTemplate,
+  injectStyles,
+  scopeId,
+  moduleIdentifier, /* server only */
+  shadowMode /* vue-cli only */
+) {
+  // Vue.extend constructor export interop
+  var options = typeof scriptExports === 'function'
+    ? scriptExports.options
+    : scriptExports
+
+  // render functions
+  if (render) {
+    options.render = render
+    options.staticRenderFns = staticRenderFns
+    options._compiled = true
+  }
+
+  // functional template
+  if (functionalTemplate) {
+    options.functional = true
+  }
+
+  // scopedId
+  if (scopeId) {
+    options._scopeId = 'data-v-' + scopeId
+  }
+
+  var hook
+  if (moduleIdentifier) { // server build
+    hook = function (context) {
+      // 2.3 injection
+      context =
+        context || // cached call
+        (this.$vnode && this.$vnode.ssrContext) || // stateful
+        (this.parent && this.parent.$vnode && this.parent.$vnode.ssrContext) // functional
+      // 2.2 with runInNewContext: true
+      if (!context && typeof __VUE_SSR_CONTEXT__ !== 'undefined') {
+        context = __VUE_SSR_CONTEXT__
+      }
+      // inject component styles
+      if (injectStyles) {
+        injectStyles.call(this, context)
+      }
+      // register component module identifier for async chunk inferrence
+      if (context && context._registeredComponents) {
+        context._registeredComponents.add(moduleIdentifier)
+      }
+    }
+    // used by ssr in case component is cached and beforeCreate
+    // never gets called
+    options._ssrRegister = hook
+  } else if (injectStyles) {
+    hook = shadowMode
+      ? function () {
+        injectStyles.call(
+          this,
+          (options.functional ? this.parent : this).$root.$options.shadowRoot
+        )
+      }
+      : injectStyles
+  }
+
+  if (hook) {
+    if (options.functional) {
+      // for template-only hot-reload because in that case the render fn doesn't
+      // go through the normalizer
+      options._injectStyles = hook
+      // register for functional component in vue file
+      var originalRender = options.render
+      options.render = function renderWithStyleInjection (h, context) {
+        hook.call(context)
+        return originalRender(h, context)
+      }
+    } else {
+      // inject component registration as beforeCreate hook
+      var existing = options.beforeCreate
+      options.beforeCreate = existing
+        ? [].concat(existing, hook)
+        : [hook]
+    }
+  }
+
+  return {
+    exports: scriptExports,
+    options: options
+  }
+}
+
+// CONCATENATED MODULE: ./src/lib/hs-hello/HsHello.vue
+
+
+
+
+
+
+/* normalize component */
+
+var component = normalizeComponent(
+  hs_hello_HsHellovue_type_script_lang_js_,
+  render,
+  staticRenderFns,
+  false,
+  null,
+  "6344cc04",
+  null
+  
+)
+
+/* harmony default export */ var HsHello = (component.exports);
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js?{"cacheDirectory":"node_modules/.cache/vue-loader","cacheIdentifier":"0a4d2ee7-vue-loader-template"}!./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-dialog/HsDialog.vue?vue&type=template&id=dc5e0108&scoped=true&
+var HsDialogvue_type_template_id_dc5e0108_scoped_true_render = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('el-dialog',{staticClass:"hs-dialog",attrs:{"close-on-click-modal":false,"title":_vm.title,"visible":_vm.dialogVisible,"before-close":_vm.handleClose,"destroy-on-close":true},on:{"update:visible":function($event){_vm.dialogVisible=$event}}},[_vm._t("default")],2)}
+var HsDialogvue_type_template_id_dc5e0108_scoped_true_staticRenderFns = []
+
+
+// CONCATENATED MODULE: ./src/lib/hs-dialog/HsDialog.vue?vue&type=template&id=dc5e0108&scoped=true&
+
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js??ref--12-0!./node_modules/thread-loader/dist/cjs.js!./node_modules/babel-loader/lib!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-dialog/HsDialog.vue?vue&type=script&lang=js&
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+/* harmony default export */ var HsDialogvue_type_script_lang_js_ = ({
+  name: "hs-dialog",
+  component: [],
+  props: {
+    title: ""
+  },
+  watch: {
+    dialogVisible: function dialogVisible(value) {
+      //坑 watch不能是箭头函数 否则！！！ this就不是vue对象了
+      var that = this;
+
+      if (value == false) {
+        //关闭回调
+        this.$emit("hsDialogClosed");
+      } else {
+        //显示回调
+        this.$emit("hsDialogOpen");
+      }
+    }
+  },
+  created: function created() {
+    var that = this; //初始化默认值
+
+    this.options = this.options || {}; //弹出框标题
+
+    this.options.title = this.options.title || '提示';
+  },
+  data: function data() {
+    return {
+      dialogVisible: false
+    };
+  },
+  methods: {
+    handleClose: function handleClose() {
+      this.$emit("beforeClose");
+      this.dialogVisible = false;
+    },
+    close: function close() {
+      this.dialogVisible = false;
+    },
+    show: function show() {
+      this.dialogVisible = true;
+      HSUtil.hs_msg_success("打开成功");
+    }
+  }
+});
+// CONCATENATED MODULE: ./src/lib/hs-dialog/HsDialog.vue?vue&type=script&lang=js&
+ /* harmony default export */ var hs_dialog_HsDialogvue_type_script_lang_js_ = (HsDialogvue_type_script_lang_js_); 
+// EXTERNAL MODULE: ./src/lib/hs-dialog/HsDialog.vue?vue&type=style&index=0&id=dc5e0108&lang=less&scoped=true&
+var HsDialogvue_type_style_index_0_id_dc5e0108_lang_less_scoped_true_ = __webpack_require__("58b7");
+
+// CONCATENATED MODULE: ./src/lib/hs-dialog/HsDialog.vue
+
+
+
+
+
+
+/* normalize component */
+
+var HsDialog_component = normalizeComponent(
+  hs_dialog_HsDialogvue_type_script_lang_js_,
+  HsDialogvue_type_template_id_dc5e0108_scoped_true_render,
+  HsDialogvue_type_template_id_dc5e0108_scoped_true_staticRenderFns,
+  false,
+  null,
+  "dc5e0108",
+  null
+  
+)
+
+/* harmony default export */ var HsDialog = (HsDialog_component.exports);
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js?{"cacheDirectory":"node_modules/.cache/vue-loader","cacheIdentifier":"0a4d2ee7-vue-loader-template"}!./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-select/HsSelect.vue?vue&type=template&id=4381dcb7&scoped=true&
+var HsSelectvue_type_template_id_4381dcb7_scoped_true_render = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('el-select',{attrs:{"value":_vm.value},on:{"input":function($event){return _vm.$emit('input', $event)}}},_vm._l((_vm.selectOptions),function(selectOption){return _c('el-option',{key:selectOption.value,attrs:{"label":selectOption.name,"value":selectOption.value}})}),1)}
+var HsSelectvue_type_template_id_4381dcb7_scoped_true_staticRenderFns = []
+
+
+// CONCATENATED MODULE: ./src/lib/hs-select/HsSelect.vue?vue&type=template&id=4381dcb7&scoped=true&
+
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js??ref--12-0!./node_modules/thread-loader/dist/cjs.js!./node_modules/babel-loader/lib!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-select/HsSelect.vue?vue&type=script&lang=js&
+
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+
+/* harmony default export */ var HsSelectvue_type_script_lang_js_ = ({
+  name: "hs-select",
+  props: {
+    url: '',
+    //v-model
+    value: null
+  },
+  created: function created() {
+    var _this = this;
+
+    if (this.url == '' || this.url == null) {
+      HSUtil.hs_console_error("el-select 控件没有传入 url");
+    } //加载远程数据
+
+
+    request({
+      url: this.url,
+      method: 'post',
+      data: {}
+    }).then(function (res) {
+      _this.selectOptions = res;
+    });
+  },
+  data: function data() {
+    return {
+      selectOptions: [],
+      _name: this.name
+    };
+  }
+});
+// CONCATENATED MODULE: ./src/lib/hs-select/HsSelect.vue?vue&type=script&lang=js&
+ /* harmony default export */ var hs_select_HsSelectvue_type_script_lang_js_ = (HsSelectvue_type_script_lang_js_); 
+// CONCATENATED MODULE: ./src/lib/hs-select/HsSelect.vue
+
+
+
+
+
+/* normalize component */
+
+var HsSelect_component = normalizeComponent(
+  hs_select_HsSelectvue_type_script_lang_js_,
+  HsSelectvue_type_template_id_4381dcb7_scoped_true_render,
+  HsSelectvue_type_template_id_4381dcb7_scoped_true_staticRenderFns,
+  false,
+  null,
+  "4381dcb7",
+  null
+  
+)
+
+/* harmony default export */ var HsSelect = (HsSelect_component.exports);
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js?{"cacheDirectory":"node_modules/.cache/vue-loader","cacheIdentifier":"0a4d2ee7-vue-loader-template"}!./node_modules/vue-loader/lib/loaders/templateLoader.js??vue-loader-options!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-checkboxgroup/HsCheckboxgroup.vue?vue&type=template&id=7f3c3df4&
+var HsCheckboxgroupvue_type_template_id_7f3c3df4_render = function () {var _vm=this;var _h=_vm.$createElement;var _c=_vm._self._c||_h;return _c('el-checkbox-group',{model:{value:(_vm.checkList),callback:function ($$v) {_vm.checkList=$$v},expression:"checkList"}},[_vm._l((_vm.localData),function(item){return [_c('el-checkbox',{attrs:{"label":'' + item.value},on:{"change":_vm.onChange}},[_vm._v(_vm._s(item.name))])]})],2)}
+var HsCheckboxgroupvue_type_template_id_7f3c3df4_staticRenderFns = []
+
+
+// CONCATENATED MODULE: ./src/lib/hs-checkboxgroup/HsCheckboxgroup.vue?vue&type=template&id=7f3c3df4&
+
+// EXTERNAL MODULE: ./node_modules/core-js/modules/es.string.split.js
+var es_string_split = __webpack_require__("1276");
+
+// CONCATENATED MODULE: ./node_modules/cache-loader/dist/cjs.js??ref--12-0!./node_modules/thread-loader/dist/cjs.js!./node_modules/babel-loader/lib!./node_modules/cache-loader/dist/cjs.js??ref--0-0!./node_modules/vue-loader/lib??vue-loader-options!./src/lib/hs-checkboxgroup/HsCheckboxgroup.vue?vue&type=script&lang=js&
+
+
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+/* harmony default export */ var HsCheckboxgroupvue_type_script_lang_js_ = ({
+  name: "hs-checkboxgroup",
+  props: {
+    localData: Array,
+    value: String
+  },
+  data: function data() {
+    return {
+      checkList: []
+    };
+  },
+  watch: {
+    value: {
+      deep: true,
+      //处理外界值发生变化，内部状态更新
+      handler: function handler(newValue, oldValue) {
+        console.log('HsCheckboxGroup - 监听value', newValue, oldValue);
+
+        this._setValue(newValue);
+      }
+    },
+    checkList: {
+      deep: true,
+      handler: function handler(newValue, oldValue) {
+        console.log('HsCheckboxGroup - 监听checkList', newValue, oldValue);
+      }
+    }
+  },
+  created: function created() {
+    this._setValue(this.value);
+  },
+  methods: {
+    _setValue: function _setValue(value) {
+      console.log(value);
+
+      if (this.value == null || this.value == undefined || this.value == '') {
+        this.checkList = [];
+      } else {
+        this.checkList = value.split(",");
+      }
+    },
+    onChange: function onChange() {
+      var tempStr = '';
+
+      for (var i = 0; i < this.checkList.length; i++) {
+        if (i == this.checkList.length - 1) {
+          tempStr += this.checkList[i];
+        } else {
+          tempStr += this.checkList[i] + ',';
+        }
+      }
+
+      this.$emit('input', tempStr);
+    }
+  }
+});
+// CONCATENATED MODULE: ./src/lib/hs-checkboxgroup/HsCheckboxgroup.vue?vue&type=script&lang=js&
+ /* harmony default export */ var hs_checkboxgroup_HsCheckboxgroupvue_type_script_lang_js_ = (HsCheckboxgroupvue_type_script_lang_js_); 
+// CONCATENATED MODULE: ./src/lib/hs-checkboxgroup/HsCheckboxgroup.vue
+
+
+
+
+
+/* normalize component */
+
+var HsCheckboxgroup_component = normalizeComponent(
+  hs_checkboxgroup_HsCheckboxgroupvue_type_script_lang_js_,
+  HsCheckboxgroupvue_type_template_id_7f3c3df4_render,
+  HsCheckboxgroupvue_type_template_id_7f3c3df4_staticRenderFns,
+  false,
+  null,
+  null,
+  null
+  
+)
+
+/* harmony default export */ var HsCheckboxgroup = (HsCheckboxgroup_component.exports);
 // CONCATENATED MODULE: ./src/lib/index.js
+
+
 
 
 
@@ -68346,7 +68664,7 @@ var HSUtil_init = function init() {
 
 utils_HSUtil.initHsUtil(); // 存储组件列表
 
-var components = [HsHello, HsDialog];
+var components = [HsHello, HsDialog, HsSelect, HsCheckboxgroup];
 
 var install = function install(Vue) {
   if (install.installed) return;
@@ -68362,6 +68680,8 @@ if (typeof window !== 'undefined' && window.Vue) {
 /* harmony default export */ var src_lib = ({
   install: install,
   HsDialog: HsDialog,
+  HsSelect: HsSelect,
+  HsCheckboxgroup: HsCheckboxgroup,
   HsHello: HsHello
 });
 // CONCATENATED MODULE: ./node_modules/@vue/cli-service/lib/commands/build/entry-lib.js
